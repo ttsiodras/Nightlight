@@ -13,6 +13,10 @@
 #define PIR_SENSOR_PIN   11
 #define LIGHT_SENSOR_PIN A1
 
+#define MILLIS_OF_KEEPING_LIGHT_ON 60000
+#define PIR_STABILIZATION_TIMEOUT_AFTER_LED_TURNS_OFF 30000
+#define LIGHT_SENSOR_THRESHOLD  800
+
 void setup()
 {
     pinMode(LED_OUTPUT, OUTPUT);
@@ -39,15 +43,19 @@ ISR (WDT_vect)
 
 void loop()
 {
-    static int time_on_remaining = 0;
+    static long time_on_remaining = 0;
+    static long time_off = PIR_STABILIZATION_TIMEOUT_AFTER_LED_TURNS_OFF;
 
     // Due to the power deep-sleeping for 0.125s, counting
     // is the only way to keep track of the time;
     // millis() doesn't work properly because of the sleep!
-    if (time_on_remaining > 0)
+    if (time_on_remaining > 0) {
         time_on_remaining -= 125;
-    else
+        time_off = 0;
+    } else {
+        time_off += 125;
         digitalWrite(LED_OUTPUT, LOW);   // Turn the LED off
+    }
 
     // My PIR sensor's behavior leaves a lot to be desired :-)
     // The best configuration I found, was turning both pots
@@ -61,15 +69,20 @@ void loop()
     SERIAL_PRINT(light_sensor);
     SERIAL_PRINT(" PIR sensor:");
     SERIAL_PRINT(pir_sensor);
-    SERIAL_PRINT(" Remaining:");
-    SERIAL_PRINTLN(time_on_remaining);
+    SERIAL_PRINT(" On for:");
+    SERIAL_PRINT(time_on_remaining);
+    SERIAL_PRINT(" Off for:");
+    SERIAL_PRINTLN(time_off);
     // For illumination in my area, this threshold works quite nicely.
-    if (light_sensor > 700) {
-        // ...so if it's dark enough, and the PIR detected someone...
+    if (light_sensor > LIGHT_SENSOR_THRESHOLD &&
+            time_off > PIR_STABILIZATION_TIMEOUT_AFTER_LED_TURNS_OFF) {
+        // ...so if it's dark enough, and the PIR has recovered from 
+        // being blinded from the light, and has detected someone...
         if (pir_sensor == HIGH) {
             // ...light up the LED; and keep it up for 30 seconds.
             digitalWrite(LED_OUTPUT, HIGH);
-            time_on_remaining = 30000;
+            time_on_remaining = MILLIS_OF_KEEPING_LIGHT_ON;
+            time_off = 0;
         }
     }
     delay(10); // This seems out of place; but the power shenanigans
